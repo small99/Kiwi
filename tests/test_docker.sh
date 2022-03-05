@@ -34,9 +34,34 @@ rlJournalStart
         rlRun -t -c "docker exec -i kiwi_web cat /Kiwi/uploads/installation-id"
     rlPhaseEnd
 
+    rlPhaseStartTest "Use pg_dump for backup"
+        rlRun -t -c "docker exec -i kiwi_db pg_dump --dbname=kiwi -F c > backup.bak"
+        rlAssertExists "backup.bak"
+        sleep 5
+    rlPhaseEnd
+
+    rlPhaseStartTest "Use pg_restore to restore from a backup"
+        rlRun -t -c 'docker exec -i kiwi_db psql -c "DROP DATABASE IF EXISTS kiwi;"'
+        sleep 5
+        rlRun -t -c "cat backup.bak | docker exec -i kiwi_db pg_restore --dbname=template1 -vcC"
+        assert_up_and_running
+    rlPhaseEnd
+
     rlPhaseStartTest "[PostgreSQL] Container restart"
         rlRun -t -c "docker-compose -f docker-compose.postgres restart"
         assert_up_and_running
+    rlPhaseEnd
+
+    rlPhaseStartTest "Backup files"
+        rlRun -t -c "docker exec -i kiwi_web /bin/bash -c 'echo TEST-ME > /Kiwi/uploads/test.txt'"
+        rlRun -t -c "docker exec -i kiwi_web /bin/tar -cP /Kiwi/uploads > uploads.tar"
+        rlAssertExists "uploads.tar"
+    rlPhaseEnd
+
+    rlPhaseStartTest "Restore files"
+        rlRun -t -c "docker exec -i kiwi_web /bin/rm -rf /Kiwi/uploads/*"
+        rlRun -t -c "cat uploads.tar | docker exec -i kiwi_web /bin/tar -x"
+        rlRun -t -c "docker exec -i kiwi_web /bin/bash -c 'cat /Kiwi/uploads/test.txt | grep TEST'"
     rlPhaseEnd
 
     rlPhaseStartCleanup "[PostgreSQL] Cleanup"
@@ -55,6 +80,16 @@ rlJournalStart
     rlPhaseStartTest "Container up"
         rlRun -t -c "docker-compose up -d"
         assert_perform_initdb
+        assert_up_and_running
+    rlPhaseEnd
+
+    rlPhaseStartTest "Use mysqldump for backup"
+        rlRun -t -c "docker exec -u 0 -i kiwi_db mysqldump kiwi > backup.sql"
+        rlAssertExists "backup.sql"
+    rlPhaseEnd
+
+    rlPhaseStartTest "Restore from a backup"
+        rlRun -t -c "cat backup.sql | docker exec -u 0 -i kiwi_db mysql -v kiwi"
         assert_up_and_running
     rlPhaseEnd
 
